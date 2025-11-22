@@ -1,0 +1,293 @@
+---
+title: "Final"
+author: "Nick"
+date: "2025-03-17"
+output: html_document
+---
+
+```{r packages, include=FALSE, echo=FALSE, warning=FALSE}
+rm(list = ls())
+
+library(knitr)
+library(AER)
+library(sandwich)
+library(tidyverse)  
+library(plm)
+library(haven)
+library(readxl)
+library(modelsummary) 
+library(lfe)
+library(ivreg)
+library(kableExtra)
+library(stargazer)
+library(survey)
+library(scales)
+library(tidyr)
+
+setwd("/Users/nickthome/Desktop/ECON-154")
+
+data_2019 <- read.csv("meps_2019.csv")
+data_2022 <- read.csv("meps_2022.csv")
+```
+
+------------------------------------------------------------------------------------------------------------------
+
+```{r Data Mutation, include=TRUE, echo=TRUE, warning=FALSE}
+data_2019 <- data_2019 %>%
+  rename(mepsid = meps_id)
+
+full_data <- bind_rows(data_2019, data_2022)
+```
+The data for 2019 is mutated to match the column rows as they appear in the 2022 data, then the rows are binded so that the datasets are in one dataset for future use.
+
+------------------------------------------------------------------------------------------------------------------
+
+```{r Private Insurance Mutations, include=TRUE, echo=TRUE, warning=FALSE}
+private_insurance <- full_data %>%
+  filter(insurance_type == "private")
+
+private_insurance <- private_insurance %>%
+  mutate(
+    health_status = case_when(
+      excellent_health == 1 ~ 3,
+      good_health == 1 ~ 2,
+      poor_health == 1 ~ 1,
+    )
+  )
+
+private_insurance <- private_insurance %>%
+  mutate(
+    log_family_income = log(family_income),
+    log_family_income = ifelse(is.infinite(log_family_income), 0, log_family_income),
+    log_health_expenditures = log(health_expenditures),
+    log_health_expenditures = ifelse(is.infinite(log_health_expenditures), 0, log_health_expenditures)
+  )
+
+private_spending <- lm(health_status ~ log_family_income + familysize + log_health_expenditures, data = private_insurance)
+
+stargazer(private_spending, type = "text", digits = 5)
+
+private_stats <- private_insurance %>%
+  summarise(
+    avg_excellent_health = mean(excellent_health, na.rm = TRUE),
+    avg_good_health = mean(good_health, na.rm = TRUE),
+    avg_bad_health = mean(poor_health, na.rm = TRUE),
+    avg_family_size = mean(familysize, na.rm = TRUE),
+    avg_family_income = mean(family_income, na.rm = TRUE),
+    avg_health_expenditures = mean(health_expenditures, na.rm = TRUE)
+  )
+```
+Here, I take the private insurance group from full data, and I make it into it's own dataframe, this allows me to ensure that I am only using information from the private dataset. I then set the health variables into categorical variables, 3 symbolizing excellent health, 2 symbolizing good health, and 1 symbolizing poor health. I mutate family income and health expenditure using a log transformation, so that the values are easy to handle, and that they are in the relatively same units as family size for my regression. I make sure that if there are any N/A values that they are made 0, as a log(0) will return a -Inf value through R. I then run a regression, which will be discussed more in a later code chunk. I also create a new dataframe that displays the averages of certain variables that I want to look at, which will be used for validation in the future as well. 
+
+------------------------------------------------------------------------------------------------------------------
+
+```{r Uninsured Mutations, include=TRUE, echo=TRUE, warning=FALSE}
+uninsured_insurance <- full_data %>%
+  filter(insurance_type == "uninsured")
+
+uninsured_insurance <- uninsured_insurance %>%
+  mutate(
+    health_status = case_when(
+      excellent_health == 1 ~ 3,
+      good_health == 1 ~ 2,
+      poor_health == 1 ~ 1,
+    )
+  )
+
+uninsured_insurance <- uninsured_insurance %>%
+  mutate(
+    log_family_income = log(family_income),
+    log_family_income = ifelse(is.infinite(log_family_income), 0, log_family_income),
+    log_health_expenditures = log(health_expenditures),
+    log_health_expenditures = ifelse(is.infinite(log_health_expenditures), 0, log_health_expenditures)
+  )
+
+uninsured_spending <- lm(health_status ~ log_family_income + familysize + log_health_expenditures, data = uninsured_insurance)
+
+stargazer(uninsured_spending, type = "text", digits = 5)
+
+uninsured_stats <- uninsured_insurance %>%
+  summarise(
+    avg_excellent_health = mean(excellent_health, na.rm = TRUE),
+    avg_good_health = mean(good_health, na.rm = TRUE),
+    avg_bad_health = mean(poor_health, na.rm = TRUE),
+    avg_family_size = mean(familysize, na.rm = TRUE),
+    avg_family_income = mean(family_income, na.rm = TRUE),
+    avg_health_expenditures = mean(health_expenditures, na.rm = TRUE)
+  )
+```
+Here, I take the uninsured insurance group from full data, and I make it into it's own dataframe, this allows me to ensure that I am only using information from the uninsured dataset. I then set the health variables into categorical variables, 3 symbolizing excellent health, 2 symbolizing good health, and 1 symbolizing poor health. I mutate family income and health expenditure using a log transformation, so that the values are easy to handle, and that they are in the relatively same units as family size for my regression. I make sure that if there are any N/A values that they are made 0, as a log(0) will return a -Inf value through R. I then run a regression, which will be discussed more in a later code chunk. I also create a new dataframe that displays the averages of certain variables that I want to look at, which will be used for validation in the future as well. 
+
+------------------------------------------------------------------------------------------------------------------
+
+```{r Medicaid and other public Mutations, include=TRUE, echo=TRUE, warning=FALSE}
+medicaid_other_insurance <- full_data %>%
+  filter(insurance_type == c("medicaid and other public"))
+
+medicaid_other_insurance <- medicaid_other_insurance %>%
+  mutate(
+    health_status = case_when(
+      excellent_health == 1 ~ 3,
+      good_health == 1 ~ 2,
+      poor_health == 1 ~ 1,
+    )
+  )
+
+medicaid_other_insurance <- medicaid_other_insurance %>%
+  mutate(
+    log_family_income = log(family_income),
+    log_family_income = ifelse(is.infinite(log_family_income), 0, log_family_income),
+    log_health_expenditures = log(health_expenditures),
+    log_health_expenditures = ifelse(is.infinite(log_health_expenditures), 0, log_health_expenditures)
+  )
+
+medicaid_spending <- lm(health_status ~ log_family_income + familysize + log_health_expenditures, data = medicaid_other_insurance)
+
+stargazer(medicaid_spending, type = "text", digits = 5)
+
+medicaid_stats <- medicaid_other_insurance %>%
+  summarise(
+    avg_excellent_health = mean(excellent_health, na.rm = TRUE),
+    avg_good_health = mean(good_health, na.rm = TRUE),
+    avg_bad_health = mean(poor_health, na.rm = TRUE),
+    avg_family_size = mean(familysize, na.rm = TRUE),
+    avg_family_income = mean(family_income, na.rm = TRUE),
+    avg_health_expenditures = mean(health_expenditures, na.rm = TRUE)
+  )
+```
+Here, I take the medicaid and other public insurance groups from full data, and I make it into it's own dataframe, this allows me to ensure that I am only using information from the medicaid and other public insurance dataset. I then set the health variables into categorical variables, 3 symbolizing excellent health, 2 symbolizing good health, and 1 symbolizing poor health. I mutate family income and health expenditure using a log transformation, so that the values are easy to handle, and that they are in the relatively same units as family size for my regression. I make sure that if there are any N/A values that they are made 0, as a log(0) will return a -Inf value through R. I then run a regression, which will be discussed more in a later code chunk. I also create a new dataframe that displays the averages of certain variables that I want to look at, which will be used for validation in the future as well. 
+
+------------------------------------------------------------------------------------------------------------------
+
+```{r Regression of All Insurance, include=TRUE, echo=TRUE, warning=FALSE}
+stargazer(medicaid_spending, uninsured_spending, private_spending, type = "text", digits = 5)
+```
+Here the regressions that were made for each individual insurance group are shown together, the y variable is health_status, and the x variables are: log_family_income, familysize, log_health_expenditures. Across the board all values in the regression are statistically significant at p<0.01. Column 1, is individuals on medicaid or other public insurance, column 2 is individuals who are uninsured, and column 3 is individuals who are on private insurance. I will analyze them column by column.
+
+Column 1, a 1% increase in log of family income will increase health status by 0.01586 units meaning that income is positively correlated with health status, a 1% increase in family size will increase health status by 0.03201 units meaning that familysize is also positively correlated with health status, and as expected a 1% increase in log heatlh expenditures will correlate to a 0.07196 unit DECREASE in health status meaning it is negatively correlated. As health expenditures will arise when an individual has to spend money to assist their health, which means that when health spending occurs, there is a decrease in health, and this explanation will also apply to columns 2 and 3. 
+
+Column 2, a 1% increase in log of family income will increase health status by 0.01979 units meaning that income is positively correlated with health status, a 1% increase in family size will increase health status by 0.02537 units meaning that familysize is also positively correlated with health status, and as expected a 1% increase in log heatlh expenditures will correlate to a 0.02950 unit DECREASE in health status meaning it is negatively correlated.
+
+Column 3, a 1% increase in log of family income will increase health status by 0.04259 units meaning that income is positively correlated with health status, a 1% increase in family size will increase health status by 0.02518 units meaning that familysize is also positively correlated with health status, and as expected a 1% increase in log heatlh expenditures will correlate to a 0.0512 unit DECREASE in health status meaning it is negatively correlated.
+
+Between all 3 columns, the Medicaid and other public health insurance group is affected the most by log health expenditure, familysize also affects the Medicaid and other public health insurance group the most, and log of family income affects the private insurance group the most. This is most likely to individuals who receive Medicaid and other public insurance typically having worse health statuses to begin with, since income is positively correlated with health status in this study, and Medicaid has a low income threshold for qualification for the program. While individuals on private insurance will typically make more money as they do not qualify for Medicaid, meaning that they are above the income threshold. While individuals who are uninsured generally are by choice, due to already being in a health status where they do not feel the need for health insurance at all.
+
+------------------------------------------------------------------------------------------------------------------
+
+```{r Full Data Mutations, include=TRUE, echo=TRUE, warning=FALSE}
+full_data <- full_data %>%
+  mutate(
+    log_family_income = log(family_income),
+    log_family_income = ifelse(is.infinite(log_family_income), 0, log_family_income),
+    log_health_expenditures = log(health_expenditures),
+    log_health_expenditures = ifelse(is.infinite(log_health_expenditures), 0, log_health_expenditures),
+    health_status = case_when(
+      excellent_health == 1 ~ 3,
+      good_health == 1 ~ 2,
+      poor_health == 1 ~ 1,
+    )
+  )
+```
+Now I take the full_data dataframe and create the same transformations, making family income into a log value, and the same for health expenditures, and making the health_status into categorical groups, where excellent = 3, good = 2, poor = 1.
+
+------------------------------------------------------------------------------------------------------------------
+
+```{r Spending Graph, include=TRUE, echo=TRUE, warning=FALSE}
+ggplot(full_data, aes(x = log_health_expenditures, y = after_stat(count / tapply(count, PANEL, sum)[PANEL]), fill = as.factor(health_status))) +
+  geom_histogram(binwidth = 0.5, color = "black", alpha = 0.7, position = "identity") +
+  facet_wrap(~health_status, scales = "free_y") +  # Separate histograms for each health status
+  scale_y_continuous(labels = percent_format()) +  # Convert y-axis to percentages
+  labs(
+    x = "Log Health Expenditures",
+    y = "Percentage of Total",
+    title = "Percentage Distribution of Log Health Expenditures by Health Status",
+    fill = "Health Status"
+  ) +
+  theme_minimal()
+```
+A graph displaying log health related expenditures is created, which is organized by overall health status, and as expected people with excellent health tend to spend the least overall, while people with poor health tend to spend the most, and individuals with good health are right in between. Each graph totals to 100% individually. The poor health group has the least amount of spending at the 0 of health expenditures at 5%, while over 15% of individuals with excellent health have a spending of 0.
+
+------------------------------------------------------------------------------------------------------------------
+
+```{r ER Visits Graph, include=TRUE, echo=TRUE, warning=FALSE}
+ggplot(full_data, aes(x = er_visits, y = after_stat(count / tapply(count, PANEL, sum)[PANEL]), fill = as.factor(health_status))) +
+  geom_histogram(binwidth = 0.5, color = "black", alpha = 0.7, position = "identity") +
+  facet_grid(insurance_type ~ health_status, scales = "free_y") +
+  scale_y_continuous(labels = percent_format()) +
+  labs(
+    x = "ER Visits",
+    y = "Percentage Within Each Insurance Group",
+    title = "Percentage Distribution of ER Visits by Health Status and Insurance Plan",
+    fill = "Health Status"
+  ) +
+  theme_minimal()
+```
+Here the graphs are displayed for each insurance group and each health_status within each insurance group. Each graph totals to 100% individually. The graphs display how many ER visits are observed for each insurance group and the respective health status, ER visits are used as they tend to be unaccounted for health expenditures and outcomes, and are generally used in an emergency. As obseravable, for poor health status, individuals tend to use the emergency room more, and the most for the insurance group "medicaid and other public." While individuals in private and uninsured groups tend to use the emergency room less overall, which is seen the strongest in the poor and good health group. While in the excellent health group at least 80% of all individuals do not have to visit the emergency room. And for "medicaid and other public" ER visits are more common for individuals with excellent health, with at least 10% of individuals visiting the emergency room at least 1 time. Therefore, individuals on "medicaid and other public" are most likely to visit the emergency room across all health status groups, while individuals under private and uninsured are least likely, uninsured being the most unlikely to go to the ER.
+
+------------------------------------------------------------------------------------------------------------------
+
+```{r Office Visits Graph, include=TRUE, echo=TRUE, warning=FALSE}
+ggplot(full_data, aes(x = office_visits, y = after_stat(count / tapply(count, PANEL, sum)[PANEL]), fill = as.factor(health_status))) +
+  geom_histogram(binwidth = 0.5, color = "black", alpha = 0.4, position = "dodge") +  # Use dodge to separate bars
+  facet_grid(insurance_type ~ health_status, scales = "free_y") +
+  scale_y_continuous(labels = scales::percent_format()) +  # Ensure percentage labels
+  labs(
+    x = "Office Visits",
+    y = "Percentage Within Each Insurance Group",
+    title = "Percentage Distribution of Office Visits by Health Status and Insurance Plan",
+    fill = "Health Status"
+  ) +
+  theme_minimal()
+```
+Here Office Visits are shown instead of ER visits, as office visits are less subject to randomness and more based on getting sick and or preventative healthcare visits. Sadly the bars shows as black due to the amount of observations, but the health statuses are still numbered at the top of each column of the faceted graphs. Individuals with poor health in the "medicaid and other public" and private insurance groups tend to visit the doctors office more frequently than invididuals in the uninsured group, the same follows for individuals in good health status. However, in excellent health status, a small amount changes in the frequency of office visits for individuals in the "medicaid and other public" and private insurance groups, as they tend to visit the office significantly less, with a 20% increase in 0 visits, but office visits are still prevalent. This could be due to visits for preventative care, and or potential sicknesses that occurred and visits had to be made. While the uninsured group tends to have a substantially higher amount of 0 office visits, this could be due to individuals that are uninsured, believing that they do not need doctors and or office visits being too expensive for if they are sick due to having no insurance.
+
+------------------------------------------------------------------------------------------------------------------
+
+```{r Statistics Table, include=TRUE, echo=TRUE, warning=FALSE}
+generate_summary_kable <- function(data, title) {
+  summary_stats <- data %>%
+    summarise(
+      Mean_Office_Visits = mean(office_visits, na.rm = TRUE),
+      Median_Office_Visits = median(office_visits, na.rm = TRUE),
+      SD_Office_Visits = sd(office_visits, na.rm = TRUE),
+      
+      Mean_ER_Visits = mean(er_visits, na.rm = TRUE),
+      Median_ER_Visits = median(er_visits, na.rm = TRUE),
+      SD_ER_Visits = sd(er_visits, na.rm = TRUE),
+
+      Mean_Log_Health_Expenditures = mean(log_health_expenditures, na.rm = TRUE),
+      Median_Log_Health_Expenditures = median(log_health_expenditures, na.rm = TRUE),
+      SD_Log_Health_Expenditures = sd(log_health_expenditures, na.rm = TRUE),
+
+      Mean_Log_Family_Income = mean(log_family_income, na.rm = TRUE),
+      Median_Log_Family_Income = median(log_family_income, na.rm = TRUE),
+      SD_Log_Family_Income = sd(log_family_income, na.rm = TRUE)
+    ) %>%
+    pivot_longer(cols = everything(), 
+                 names_to = "Statistic_Variable", 
+                 values_to = "Value") %>%
+    separate(Statistic_Variable, into = c("Statistic", "Variable1", "Variable2"), sep = "_", extra = "merge") %>%
+    mutate(Variable = case_when(
+      Variable1 == "Log" & Variable2 == "Health Expenditures" ~ "Log Health Expenditures",
+      Variable1 == "Log" & Variable2 == "Family Income" ~ "Log Family Income",
+      TRUE ~ paste(Variable1, Variable2, sep = " ")
+    )) %>%
+    select(Variable, Statistic, Value) %>%
+    pivot_wider(names_from = Statistic, values_from = Value) %>%
+    arrange(Variable)  # Ensure variables stay grouped together
+
+  summary_stats %>%
+    kable(caption = title, digits = 2, format = "markdown") %>%
+    kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed"))
+}
+
+
+generate_summary_kable(medicaid_other_insurance, "Summary Statistics: Medicaid and Other Public Insurance")
+generate_summary_kable(private_insurance, "Summary Statistics: Private Insurance")
+generate_summary_kable(uninsured_insurance, "Summary Statistics: Uninsured")
+```
+Here the descriptive statistics are shown that were used within the graphs, as noticeable the average ER visits is highest for "Medicaid and Other Public Insurance" while the Uninsured group has the lowest average for ER visits. The Log Family_Income is highest for the Private Insured group, while "Medicaid and Other Public Insurance" has the lowest average Log Family_Income. And the "Medicaid and Other Public Insurance" has the highest average Log Health_Expenditures while the Uninsured group has the lowest, which is expected as previously mentioned that individuals within the Uninsured group generally believe they do not need insurance due to being in good health. And the "Medicaid and Other Public Insurance" has the highest average Office Visits, while the Uninsured group has the lowest on average.
+
+------------------------------------------------------------------------------------------------------------------
+
+And as a conclusion to the findings for this project, individuals in the "Medicaid and Other Public Insurance" tend to have the highest spending for health expenditures, while having the lowest income. This is because individuals in the "Medicaid and Other Public Insurance" will have their expenses covered mainly by the government (since Medicaid is a government funded program paid for by taxpayers). While the private insurance group has the highest family income as expected since private insurance is more expensive than government paid programs. Individuals in the "Medicaid and Other Public Insurance" tend to utilize the ER and doctor's office visits more than every other group for either preventative care or for healthcare for health issues. While the uninsured group rarely has ER visits or Office visits either due to the expense that is charged through having no insurance or for not needing the services due to being in good health.
